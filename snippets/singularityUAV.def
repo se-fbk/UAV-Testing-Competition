@@ -1,0 +1,30 @@
+# Use Docker as the bootstrap method to create a new Singularity image
+Bootstrap: docker
+From: skhatiri/aerialist:latest
+
+%setup
+
+     mkdir ${SINGULARITY_ROOTFS}/src/generator
+
+
+%files
+     # ./requirements.txt /src/generator/requirements.txt
+
+
+%environment
+
+     AGENT=local
+     AVOIDANCE_LAUNCH=/src/aerialist/aerialist/resources/simulation/collision_prevention.launch
+     AVOIDANCE_BOX=/src/aerialist/aerialist/resources/simulation/box.xacro
+     export AGENT
+     export AVOIDANCE_LAUNCH
+     export AVOIDANCE_BOX
+
+%post
+
+     apt update -y
+     pip3 install -e /src/aerialist/
+     # pip3 install -r /src/generator/requirements.txt
+
+%runscript
+
