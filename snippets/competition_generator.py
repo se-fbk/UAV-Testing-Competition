@@ -1,6 +1,4 @@
-import random
 from typing import List
-from math import cos, sin, pi
 
 import config
 from aerialist.px4.drone_test import DroneTest
@@ -35,12 +33,11 @@ class CompetitionGenerator(object):
         min_distance = 10
 
         test_cases = []
-        for _ in range(budget):
           
-            obstacle_generator = ObstacleGenerator()
-            obstacles = obstacle_generator.generate(self.case_study_file)
-            print(json.dumps(obstacles, indent=4))
+        obstacle_generator = ObstacleGenerator()
+        obstacles, parameters = obstacle_generator.generate(self.case_study_file)
 
+        for _ in range(budget):
             list_obstacles = []
             for obst in obstacles:
                 
@@ -48,8 +45,7 @@ class CompetitionGenerator(object):
                     x=obst['x'], 
                     y=obst['y'], 
                     z=0,
-                    r=0,
-                    #r=obst['r'],
+                    r=obst['rotation'],
                 )
 
                 size = Obstacle.Size(
@@ -64,28 +60,41 @@ class CompetitionGenerator(object):
 
             test = TestCase(self.case_study, list_obstacles)
             try:
-                # Execute test case in a separated thread with a timeout
-                print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Starting test')
-                p = multiprocessing.Process(target=self.run_test,  args= (test,)  )
-                p.start()
-                p.join(timeout=config.TIMEOUT_MAX)
-                if p.is_alive():
-                    p.terminate()  # Forcefully terminate the process
-                    print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Test execution timed out')
-                    # test.execute()
-                else:
-                    distances = test.get_distances()
-                    print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Minimum_distance: {min(distances)}')
 
-                    # save if distances is less than min_distance
-                    if min(distances) < config.MIN_DISTANCE_TO_SAVE:
-                        print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Saving test {n_gen_test + 1}')
-                        test.plot()
-                        test.save_yaml(f"{tests_fld}/test_{n_gen_test}.yaml")
-                        shutil.copy2(test.log_file, f"{tests_fld}/test_{n_gen_test}.ulg")
-                        shutil.copy2(test.plot_file, f"{tests_fld}/test_{n_gen_test}.png")
-                        n_gen_test += 1
-                        test_cases.append(test)
+                # # Execute test case in a separated thread with a timeout
+                # print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Starting test')
+                # p = multiprocessing.Process(target=self.run_test,  args= (test,)  )
+                # p.start()
+                # p.join(timeout=config.TIMEOUT_MAX)
+                # if p.is_alive():
+                #     p.terminate()  # Forcefully terminate the process
+                #     print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Test execution timed out')
+                #     # test.execute()
+                # else:
+                #     distances = test.get_distances()
+                #     print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Minimum_distance: {min(distances)}')
+                #
+                #     # save if distances is less than min_distance
+                #     if min(distances) < config.MIN_DISTANCE_TO_SAVE:
+                #         print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Saving test {n_gen_test + 1}')
+                #         test.plot()
+                #         test.save_yaml(f"{tests_fld}/test_{n_gen_test}.yaml")
+                #         shutil.copy2(test.log_file, f"{tests_fld}/test_{n_gen_test}.ulg")
+                #         shutil.copy2(test.plot_file, f"{tests_fld}/test_{n_gen_test}.png")
+                #         n_gen_test += 1
+                #         test_cases.append(test)
+
+                # Execute test case
+                test.execute()
+                distances = test.get_distances()
+                print(f"minimum_distance: {min(distances)}")
+                test.plot()
+                test_cases.append(test)
+                
+                # add minimum distance to parameters json
+                parameters["minimum_distance"] = min(distances)
+                print(parameters)
+
 
             except Exception as e:
                 print("Exception during test execution, skipping the test")
