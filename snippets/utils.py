@@ -1,6 +1,7 @@
 from math import cos, sin, sqrt, radians, atan2, degrees
 from typing import List, Dict
 from config import SPIRAL_RADIUS_INCREMENT, SPIRAL_NUM_POINTS, SPIRAL_GOLDEN_ANGLE
+from json import JSONEncoder
 
 class Position:
     """
@@ -17,6 +18,10 @@ class Position:
         self.y = y
         self.z = z
         self.angle = angle
+
+class DataEncoder(JSONEncoder):
+    def default(self, o):
+        return o.__dict__
 
 def latlon_to_cartesian(lat: float, lon: float, origin_lat: float, origin_lon: float) -> tuple:
     """

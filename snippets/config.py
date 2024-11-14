@@ -1,11 +1,3 @@
-from threading import TIMEOUT_MAX
-import utils
-
-# Global Variables
-
-OBSTACLE_HEIGHT = 20
-NUM_SPIRAL_POINTS = 200
-
 # Global Variables
 
 class Position:
@@ -36,7 +28,7 @@ OBST_MIN_WIDTH = 10
 OBST_MAX_WIDTH = 20
 OBST_MAX_LENGTH = 20
 OBST_MIN_HEIGHT = 15
-OBST_MAX_HEIGHT = 25
+OBST_MAX_HEIGHT = 15
 
 THRESHOLD_DISTANCE = 3
 
@@ -45,9 +37,13 @@ DIR_GENERATED_PLOTS = "generated_tests_plot/"
 SPIRAL_GOLDEN_ANGLE = 0.1 
 SPIRAL_RADIUS_INCREMENT = 0.02
 SPIRAL_NUM_POINTS = 30
+
+# folder to save tests
 TESTS_FOLDER = "./generated_tests/"
+# maximum time (s) for a test run
 TIMEOUT_MAX = 600
-MIN_DISTANCE_TO_SAVE = 5
+# minimum distance to save test execution
+MIN_DISTANCE_TO_SAVE = 50
 
 DRONE_DIMENSIONS = 0.55
 
@@ -55,5 +51,5 @@ NUM_OBSTACLES = 2
 OBST_ROTATION = 0
 
 OBST_POS_FACTOR = 2
-DRONE_FACTOR = 5
+DRONE_FACTOR = 10
 
