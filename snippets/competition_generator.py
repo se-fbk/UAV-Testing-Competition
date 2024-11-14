@@ -10,13 +10,30 @@ from testcase import TestCase
 from obstacle_generator import ObstacleGenerator
 import json
 
+from datetime import datetime
+import os
+import shutil
+import multiprocessing
+
+
 class CompetitionGenerator(object):
 
-    def __init__(self, case_study_file: str) -> None:        
+    def __init__(self, case_study_file: str) -> None:
         self.case_study = DroneTest.from_yaml(case_study_file)
         self.case_study_file = case_study_file
 
-    def generate(self, budget: int) -> List[TestCase]: 
+    def run_test(self, test: TestCase) -> None:
+        test.execute()
+
+    def generate(self, budget: int) -> List[TestCase]:
+
+
+        tests_fld = f'{config.TESTS_FOLDER}{os.path.basename(self.case_study_file).replace(".yaml","")}_{datetime.now().strftime("%d-%m-%H-%M-%S")}/'
+        print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Save tests in folder {tests_fld}')
+        os.mkdir(tests_fld)
+        n_gen_test = 0
+        min_distance = 10
+
         test_cases = []
         for _ in range(budget):
           
@@ -32,6 +49,7 @@ class CompetitionGenerator(object):
                     y=obst['y'], 
                     z=0,
                     r=0,
+                    #r=obst['r'],
                 )
 
                 size = Obstacle.Size(
@@ -46,13 +64,29 @@ class CompetitionGenerator(object):
 
             test = TestCase(self.case_study, list_obstacles)
             try:
-                # Execute test case
-                test.execute()
-                distances = test.get_distances()
-                print(f"minimum_distance: {min(distances)}")
-                test.plot()
-                test_cases.append(test)
-                 
+                # Execute test case in a separated thread with a timeout
+                print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Starting test')
+                p = multiprocessing.Process(target=self.run_test,  args= (test,)  )
+                p.start()
+                p.join(timeout=config.TIMEOUT_MAX)
+                if p.is_alive():
+                    p.terminate()  # Forcefully terminate the process
+                    print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Test execution timed out')
+                    # test.execute()
+                else:
+                    distances = test.get_distances()
+                    print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Minimum_distance: {min(distances)}')
+
+                    # save if distances is less than min_distance
+                    if min(distances) < config.MIN_DISTANCE_TO_SAVE:
+                        print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Saving test {n_gen_test + 1}')
+                        test.plot()
+                        test.save_yaml(f"{tests_fld}/test_{n_gen_test}.yaml")
+                        shutil.copy2(test.log_file, f"{tests_fld}/test_{n_gen_test}.ulg")
+                        shutil.copy2(test.plot_file, f"{tests_fld}/test_{n_gen_test}.png")
+                        n_gen_test += 1
+                        test_cases.append(test)
+
             except Exception as e:
                 print("Exception during test execution, skipping the test")
                 print(e)
