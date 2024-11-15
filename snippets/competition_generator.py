@@ -16,7 +16,7 @@ from datetime import datetime
 import os
 import shutil
 import multiprocessing
-
+import time
 
 class CompetitionGenerator(object):
 
@@ -111,6 +111,8 @@ class CompetitionGenerator(object):
                     # p has not yet finished. Terminate it
                     print(f'{datetime.now().strftime("%d-%m-%H-%M-%S")} Test execution timed out')
                     p.kill()  # Forcefully terminate the process
+                    time.sleep(60)
+                    p.close() # Free resources
 
                 else:
                     # p has finished. Get the test from the queue
@@ -118,7 +120,7 @@ class CompetitionGenerator(object):
                     n_gen_test += 1
 
 
-                # Execute test case
+                # Execute test cas
                 # test.execute()
                 # distances = test.get_distances()
                 # print(f"minimum_distance: {min(distances)}")

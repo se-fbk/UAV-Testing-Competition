@@ -81,7 +81,7 @@ class ObstacleGenerator:
         # Calculate inclination of the segment
         is_left_first, angle = calculate_inclination(segment[0], segment[-1])
 
-        print("Inclination: ", angle)
+        # print("Inclination: ", angle)
 
         # Divide filtered points into left and right
         left_points = [p for p in filtered_points if is_left_of_trajectory(segment, p)]
@@ -105,8 +105,8 @@ class ObstacleGenerator:
         gate_min_position = Position(entry_point.x-((drone_dimension/2)*config.DRONE_FACTOR), entry_point.y) 
         gate_max_position = Position(entry_point.x+((drone_dimension/2)*config.DRONE_FACTOR), entry_point.y)
 
-        print("Gate Min Position:", gate_min_position.x, gate_min_position.y)
-        print("Gate Max Position:", gate_max_position.x, gate_max_position.y)
+        # print("Gate Min Position:", gate_min_position.x, gate_min_position.y)
+        # print("Gate Max Position:", gate_max_position.x, gate_max_position.y)
 
         max_legth_left = 0
         max_width_left = 0
@@ -305,7 +305,7 @@ class ObstacleGenerator:
         #Plot everything
         self.plot(spiral_points, filtered_points, obst_segment, spiral_center, obstacles)
         
-        print("Generated Obstacles:", json.dumps(obstacles, indent=4))
+        # print("Generated Obstacles:", json.dumps(obstacles, indent=4))
 
         return obstacles, parameters
 
