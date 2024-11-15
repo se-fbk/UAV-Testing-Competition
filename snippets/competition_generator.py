@@ -113,6 +113,10 @@ class CompetitionGenerator(object):
                     p.kill()  # Forcefully terminate the process
                     time.sleep(60)
                     p.close() # Free resources
+                    # check if some children is still active and close it
+                    active_p = multiprocessing.active_children()
+                    for child_p in active_p:
+                        child_p.kill()
 
                 else:
                     # p has finished. Get the test from the queue
