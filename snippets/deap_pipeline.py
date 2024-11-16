@@ -49,6 +49,7 @@ toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 # Register genetic operators: crossover, mutation, and selection
 toolbox.register("mate", tools.cxTwoPoint)  # Two-point crossover
+toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=5, indpb=0.2)  # Gaussian mutation
 toolbox.register("select", tools.selTournament, tournsize=3)  # Tournament selection
 
 # ==============================
@@ -199,7 +200,7 @@ toolbox.register("evaluate", evaluate)
 # ==============================
 if __name__ == "__main__":
 
-    POPULATION = 20
+    POPULATION = 2
     generations = 10  # Number of generations
     cxpb = 0.5  # Crossover probability
     mutpb = 0.2  # Mutation probability
