@@ -8,7 +8,6 @@ import shutil
 from decouple import config
 from datetime import datetime
 
-
 import random 
 import yaml  
 

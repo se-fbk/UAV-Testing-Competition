@@ -3,7 +3,10 @@ from typing import List
 from aerialist.px4.drone_test import DroneTest
 from aerialist.px4.obstacle import Obstacle
 from testcase import TestCase
+import signal
 
+def timeout_handler(signum, frame):
+        raise Exception("Timeout")
 
 class DeapGenerator(object):
     
@@ -15,7 +18,13 @@ class DeapGenerator(object):
         for i in range(budget):
             test = TestCase(self.case_study, obstacles)
             try:
+                signal.signal(signal.SIGALRM, timeout_handler)
+                timeout_duration = 60 * 10
+                signal.alarm(timeout_duration)
+
                 test.execute()
+
+
                 distances = test.get_distances()
                 print(f"minimum_distance:{min(distances)}")
                 test.plot()
