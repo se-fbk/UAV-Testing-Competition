@@ -19,7 +19,7 @@ class DeapGenerator(object):
             test = TestCase(self.case_study, obstacles)
             try:
                 signal.signal(signal.SIGALRM, timeout_handler)
-                timeout_duration = 60 * 10
+                timeout_duration = 60 * 5
                 signal.alarm(timeout_duration)
 
                 test.execute()

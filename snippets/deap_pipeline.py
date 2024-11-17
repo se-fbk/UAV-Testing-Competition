@@ -17,14 +17,21 @@ import yaml
 LIMITS = {
     "x": (-40, 30),  # Limits for x position (min and max)
     "y": (10, 40),   # Limits for y position (min and max)
-    "l": (2, 20),    # Limits for obstacle length (min and max)
-    "w": (2, 20),    # Limits for obstacle width (min and max)
+    "l": (10, 20),    # Limits for obstacle length (min and max)
+    "w": (5, 5),    # Limits for obstacle width (min and max)
     "h": (25, 25),   # Fixed height for obstacles
-    "r": (0, 90)     # Limits for obstacle rotation (degrees)
+    "r": (0, 0)     # Limits for obstacle rotation (degrees)
 }
 
-SAVE_FILE = "population_state.json"  # File to save the population state for recovery
+SAVE_FILE = "population_state_node88.json"  # File to save the population state for recovery
 TESTS_FOLDER = config("TESTS_FOLDER", default="./generated_tests/")
+
+tests_fld = f'{TESTS_FOLDER}{datetime.now().strftime("%d-%m-%H-%M-%S")}/'
+os.mkdir(tests_fld)
+
+n_generated_test = 0
+
+mission = "case_studies/mission2.yaml"
 
 # ==============================
 # DEAP CONFIGURATION
@@ -123,6 +130,19 @@ def check_no_overlap(obstacles):
                 return False  # Overlap detected
     return True
 
+def check_oub(obstacles):
+    for i in range(len(obstacles)):
+        obs = obstacles[i]
+        if (obs.position.x - (obs.size.l  / 2 )) < LIMITS["x"][0]:
+            return False
+        if (obs.position.x + (obs.size.l  / 2 )) > LIMITS["x"][1]:
+            return False
+        if (obs.position.y - (obs.size.w  / 2 )) < LIMITS["y"][0]:
+            return False
+        if (obs.position.y + (obs.size.w  / 2 )) > LIMITS["y"][1]:
+            return False
+    return True
+
 def decode_individual_to_obstacles(individual):
     """Convert an individual's genes into a list of obstacle objects."""
     list_obstacles = []
@@ -134,6 +154,7 @@ def decode_individual_to_obstacles(individual):
         w = bound(individual[i+3], LIMITS["w"][0], LIMITS["w"][1])
         h = bound(individual[i+4], LIMITS["h"][0], LIMITS["h"][1])
         r = bound(individual[i+5], LIMITS["r"][0], LIMITS["r"][1])
+
         
         # Create obstacle object
         position = Obstacle.Position(x=x, y=y, z=0, r=r)
@@ -162,20 +183,26 @@ def evaluate(individual):
         print("Overlap detected. Maximum penalty assigned.")
         return 100.0,  # Penalize heavily for overlapping obstacles
 
+    if not check_oub(obstacles):
+        print("Out of bound detected. Maximum penalty assigned.")
+        return 100.0,  # Penalize heavily for overlapping obstacles
+
     # Generate test cases with obstacles
-    generator = DeapGenerator("case_studies/mission1.yaml")
-    print("Running simulation...")
+    generator = DeapGenerator(mission)
+    print(f'Running simulation... {datetime.now().strftime("%d-%m-%H-%M-%S")}')
     test_cases = generator.generate(1, obstacles)
     if not test_cases:
         print("No test case generated. Maximum penalty assigned.")
         return 100.0,  # Penalize heavily if no test cases are generated
 
-    tests_fld = f'{TESTS_FOLDER}{datetime.now().strftime("%d-%m-%H-%M-%S")}/'
-    os.mkdir(tests_fld)
+    # tests_fld = f'{TESTS_FOLDER}{datetime.now().strftime("%d-%m-%H-%M-%S")}/'
+    # os.mkdir(tests_fld)
+    global n_generated_test
     for i in range(len(test_cases)):
-        test_cases[i].save_yaml(f"{tests_fld}/test_{i}.yaml")
-        shutil.copy2(test_cases[i].log_file, f"{tests_fld}/test_{i}.ulg")
-        shutil.copy2(test_cases[i].plot_file, f"{tests_fld}/test_{i}.png")
+        test_cases[i].save_yaml(f"{tests_fld}/test_{n_generated_test}.yaml")
+        shutil.copy2(test_cases[i].log_file, f"{tests_fld}/test_{n_generated_test}.ulg")
+        shutil.copy2(test_cases[i].plot_file, f"{tests_fld}/test_{n_generated_test}.png")
+        n_generated_test += 1
 
     # Calculate the minimum distance across all test cases
     min_distances = [min(tc.get_distances()) for tc in test_cases]
@@ -194,7 +221,7 @@ toolbox.register("evaluate", evaluate)
 if __name__ == "__main__":
 
     POPULATION = 200
-    generations = 10  # Number of generations
+    generations = 1000  # Number of generations
     cxpb = 0.5  # Crossover probability
     mutpb = 0.2  # Mutation probability
 
