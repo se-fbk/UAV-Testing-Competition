@@ -4,6 +4,10 @@ from deap_generator import DeapGenerator
 from deap import base, creator, tools  
 from aerialist.px4.drone_test import DroneTest  
 from aerialist.px4.obstacle import Obstacle  
+import shutil
+from decouple import config
+from datetime import datetime
+
 
 import random 
 import yaml  
@@ -21,15 +25,16 @@ LIMITS = {
 }
 
 SAVE_FILE = "population_state.json"  # File to save the population state for recovery
+TESTS_FOLDER = config("TESTS_FOLDER", default="./generated_tests/")
 
 # ==============================
 # DEAP CONFIGURATION
 # ==============================
+# Change the fitness configuration to minimize the distance
+creator.create("FitnessMin", base.Fitness, weights=(-1.0,))  # Negative weight for minimization
+creator.create("Individual", list, fitness=creator.FitnessMin)
 
-creator.create("FitnessMax", base.Fitness, weights=(1.0,))
-creator.create("Individual", list, fitness=creator.FitnessMax)
-
-toolbox = base.Toolbox()  # Initialize DEAP toolbox
+toolbox = base.Toolbox()
 
 # Attribute generators for obstacle parameters (position, size, rotation)
 toolbox.register("attr_x", lambda: random.uniform(LIMITS["x"][0], LIMITS["x"][1]))
@@ -73,7 +78,6 @@ def save_population(population, generation):
 
 def load_population():
     """Load the population and fitness values from a file, if it exists."""
-
     if not os.path.exists(SAVE_FILE): 
         print("No save file found. Starting from scratch.")
         return None, 0  # Start fresh
@@ -103,7 +107,6 @@ def bound(value, lower, upper):
 
 def check_no_overlap(obstacles):
     """Check that no obstacles overlap."""
-    
     for i in range(len(obstacles)):
         for j in range(i + 1, len(obstacles)):
             a = obstacles[i]
@@ -125,7 +128,6 @@ def decode_individual_to_obstacles(individual):
     """Convert an individual's genes into a list of obstacle objects."""
     list_obstacles = []
     for i in range(0, len(individual), 6):
-
         # Extract and bound obstacle parameters
         x = bound(individual[i], LIMITS["x"][0], LIMITS["x"][1])
         y = bound(individual[i+1], LIMITS["y"][0], LIMITS["y"][1])
@@ -134,7 +136,7 @@ def decode_individual_to_obstacles(individual):
         h = bound(individual[i+4], LIMITS["h"][0], LIMITS["h"][1])
         r = bound(individual[i+5], LIMITS["r"][0], LIMITS["r"][1])
         
-        #  Create obstacle object
+        # Create obstacle object
         position = Obstacle.Position(x=x, y=y, z=0, r=r)
         size = Obstacle.Size(l=l, w=w, h=h)
         obstacle = Obstacle(size, position)
@@ -152,26 +154,14 @@ def decode_individual_to_obstacles(individual):
 
     return list_obstacles
 
-def calculate_points(min_distance):
-    """Calculate points based on the minimum distance from the drone."""
-    if min_distance < 0.25:
-        return 5  # Maximum points
-    elif 0.25 <= min_distance < 1:
-        return 2
-    elif 1 <= min_distance < 1.5:
-        return 1
-    else:
-        return 0  # No points
-
 def evaluate(individual):
-    """Evaluate an individual based on scoring derived from minimum distances."""
+    """Evaluate an individual based on the minimum distance to obstacles."""
     obstacles = decode_individual_to_obstacles(individual)
-    print(f"Evaluating individual with obstacles: {obstacles}")
 
     # Check for overlaps
     if not check_no_overlap(obstacles):
         print("Overlap detected. Maximum penalty assigned.")
-        return 0.0,
+        return 100.0,  # Penalize heavily for overlapping obstacles
 
     # Generate test cases with obstacles
     generator = DeapGenerator("case_studies/mission1.yaml")
@@ -179,19 +169,23 @@ def evaluate(individual):
     test_cases = generator.generate(1, obstacles)
     if not test_cases:
         print("No test case generated. Maximum penalty assigned.")
-        return 0.0,
+        return 100.0,  # Penalize heavily if no test cases are generated
 
-    # Calculate points for each simulation
-    total_points = 0
-    for tc in test_cases:
-        distances = tc.get_distances()
-        min_distance = min(distances)
-        points = calculate_points(min_distance)
-        print(f"Minimum distance: {min_distance:.2f}m, Points awarded: {points}")
-        total_points += points
+    tests_fld = f'{TESTS_FOLDER}{datetime.now().strftime("%d-%m-%H-%M-%S")}/'
+    os.mkdir(tests_fld)
+    for i in range(len(test_cases)):
+        test_cases[i].save_yaml(f"{tests_fld}/test_{i}.yaml")
+        shutil.copy2(test_cases[i].log_file, f"{tests_fld}/test_{i}.ulg")
+        shutil.copy2(test_cases[i].plot_file, f"{tests_fld}/test_{i}.png")
 
-    print(f"Total points awarded: {total_points}")
-    return total_points,  # Fitness is the total score
+    # Calculate the minimum distance across all test cases
+    min_distances = [min(tc.get_distances()) for tc in test_cases]
+    if not min_distances:
+        return 100.0,  # Penalize if distances are invalid or not computed
+
+    min_distance = min(min_distances)
+    print(f"Minimum distance: {min_distance:.2f}m")
+    return min_distance,  # Lower is better for minimization
 
 toolbox.register("evaluate", evaluate)
 
@@ -200,7 +194,7 @@ toolbox.register("evaluate", evaluate)
 # ==============================
 if __name__ == "__main__":
 
-    POPULATION = 2
+    POPULATION = 200
     generations = 10  # Number of generations
     cxpb = 0.5  # Crossover probability
     mutpb = 0.2  # Mutation probability
@@ -221,7 +215,8 @@ if __name__ == "__main__":
             ind.fitness.values = fit
 
         # Log average fitness
-        print(f"Average fitness: {sum(ind.fitness.values[0] for ind in population) / len(population):.4f}")
+        avg_fitness = sum(ind.fitness.values[0] for ind in population) / len(population)
+        print(f"Average fitness (lower is better): {avg_fitness:.4f}")
         save_population(population, gen + 1)  # Save progress
 
         # Perform genetic operations: selection, crossover, mutation
@@ -247,4 +242,4 @@ if __name__ == "__main__":
 
     print("\n=== Final Result ===")
     print(f"Best configuration: {best_obstacles}")
-    print(f"Best fitness: {best_individual.fitness.values[0]:.4f}")
+    print(f"Best fitness (minimum distance): {best_individual.fitness.values[0]:.4f}")
