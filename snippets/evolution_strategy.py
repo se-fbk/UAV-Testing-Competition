@@ -6,6 +6,8 @@ import numpy as np
 import config
 from aerialist.px4.drone_test import DroneTest  # type: ignore
 from aerialist.px4.obstacle import Obstacle # type: ignore
+
+from config import X_RANGE, Y_RANGE
 from testcase import TestCase
 from mission_plan import DroneMissionPlan
 import signal
@@ -58,6 +60,7 @@ class EvolutionaryStrategy(object):
         self.candidate_points = self.obstacle_generator.filtered_spiral.copy()
         self.candidate_pairs_used = set()
         self.threshold = config.THRESHOLD_DISTANCE
+        self.total_score = 0
         
     def generate(self, budget): 
         """
@@ -96,7 +99,7 @@ class EvolutionaryStrategy(object):
             if(performance_attemps < config.MAX_ATTEMPTS_PERFORMANCE):
                 
                 # Mutate
-                child_config = self.mutate(parent_config, config.MAX_ATTEMPTS_GENERATION)
+                child_config = self.mutate_child(parent_config, config.MAX_ATTEMPTS_GENERATION)
                 child_obsts = self.obstacle_generator.get_obstacles_from_parameters(child_config)
                 child_fitness = self.execution(child_obsts)
 
@@ -161,6 +164,7 @@ class EvolutionaryStrategy(object):
 
         # Execute the test case
         test = TestCase(self.case_study, list_obstacles)
+        distances = []
         try:
             
             if(config.TESTING == True):
@@ -181,7 +185,7 @@ class EvolutionaryStrategy(object):
                 # Get the distances
                 distances = test.get_distances()
 
-            print(f"Minimum distance:{min(distances)}")
+            print(f"Minimum distance: {min(distances)}")
         except Exception as e:
             print("Exception during test execution, skipping the test")
             print(e)
@@ -191,6 +195,8 @@ class EvolutionaryStrategy(object):
         
         # Save the results
         if(min(distances) < config.MINIMUM_DISTANCE_EXECUTION):
+
+            self.total_score += self.calculate_score(min(distances))
 
             if(config.TESTING == False):
                 test.save_yaml(f"{self.tests_fld}test_{self.test_counter}.yaml")
@@ -255,7 +261,6 @@ class EvolutionaryStrategy(object):
                 return mutated_parameters
         
         #after max attempts, change the parent and mutate again
-        print(f"Max attempts reached, initialization new parent")
         parent_config = self.initialize_parent()
         return self.mutate(parent_config, max_attempts)
 
@@ -331,11 +336,110 @@ class EvolutionaryStrategy(object):
         return parent_parameters
 
     def mutate_child(self, parameters, max_attempts):
-        return None
+        """
+        Mutates the child
+        :param parameters:
+        :param max_attempts:
+        :return:
+        """
+
+        for attempt in range(max_attempts):
+
+            # create a copy of the father and mutate i
+            mutated_parameters = parameters.copy()
+
+            # Choose a random parameter to mutate
+            choice = np.random.uniform(0.0, 1.0)
+            # print(f"{choice}")
+            if choice < 0.3:  # Move block 1
+                new_x1 = mutated_parameters[0] + np.random.choice(X_RANGE)
+                new_y1 = mutated_parameters[1] + np.random.choice(Y_RANGE)
+                mutated_parameters[0] = new_x1
+                mutated_parameters[1] = new_y1
+
+            elif choice < 0.5:  # Rotate block 1
+                new_r1 = np.random.choice(np.arange(0, 91, config.ANGLE_STEP))
+                mutated_parameters[2] = new_r1
+
+            elif choice < 0.8:  # Move block 2
+                new_x2 = mutated_parameters[3] + np.random.choice(X_RANGE)
+                new_y2 = mutated_parameters[4] + np.random.choice(Y_RANGE)
+                mutated_parameters[3] = new_x2
+                mutated_parameters[4] = new_y2
+
+            elif choice <= 1:  # Rotate block 2
+                new_r2 = np.random.choice(np.arange(0, 91, config.ANGLE_STEP))
+                mutated_parameters[5] = new_r2
+
+            # Add hyperparameters to check validity
+            obstacles = self.obstacle_generator.get_obstacles_from_parameters(mutated_parameters)
+
+            # Check if the mutated parameters are valid
+            if (self.obstacle_generator.is_valid(obstacles) and tuple(mutated_parameters) not in self.history_mutant):
+                self.history_mutant.add(tuple(mutated_parameters))
+                return mutated_parameters
+
+        # after max attempts, change the parent and mutate again
+        parent_config = self.initialize_parent()
+        return self.mutate(parent_config, max_attempts)
     
     def mutate_parent(self, parameters, max_attempts):
-        return None
-    
+        """
+        Mutates the given parent parameters by randomly modifying one parameter at a time
+        and checks for validity after each mutation. If a valid mutation is not found within
+        the maximum number of attempts, a new parent is initialized and mutation continues.
+
+        Parameters:
+        parameters (list): [x1, y1, r1, x2, y2, r2]
+        max_attempts (int): The maximum number of mutation attempts allowed.
+
+        Returns:
+        list: A new valid set of mutated parameters
+        
+        """
+        # Mutate parent
+        mutated_parameters = parameters.copy()
+
+        for attempt in range(max_attempts):
+            # Choose a random parameter to mutate
+            choice = np.random.uniform(0, 6)
+
+            if choice < 1:  # Mutation on x1
+                new_x1 = mutated_parameters[0] + np.random.choice([-config.ROUND_PARAMETER, config.ROUND_PARAMETER])
+                mutated_parameters[0] = new_x1
+
+            elif choice < 2:  # Mutation on x1               
+                new_y1 = mutated_parameters[1] + np.random.choice([-config.ROUND_PARAMETER, config.ROUND_PARAMETER])
+                mutated_parameters[1] = new_y1
+
+            elif choice < 3:  # Mutation on x1
+                new_r1 = np.random.choice(np.arange(0, 91, config.ANGLE_STEP))
+                mutated_parameters[2] = new_r1
+
+            elif choice < 4:  # Mutation on x1
+                new_x2 = mutated_parameters[3] + np.random.choice([-config.ROUND_PARAMETER, config.ROUND_PARAMETER])
+                mutated_parameters[3] = new_x2
+
+            elif choice < 5:  # Mutation on x1
+                new_y2 = mutated_parameters[4] + np.random.choice([-config.ROUND_PARAMETER, config.ROUND_PARAMETER])
+                mutated_parameters[4] = new_y2
+
+            else:  # Mutation on x1
+                new_r2 = np.random.choice(np.arange(0, 91, config.ANGLE_STEP))
+                mutated_parameters[5] = new_r2
+            
+            # Add hyperparameters to check validity
+            obstacles = self.obstacle_generator.get_obstacles_from_parameters(mutated_parameters)
+
+            # Check if the mutated parameters are valid
+            if(self.obstacle_generator.is_valid(obstacles)):
+                return mutated_parameters
+        
+        # After max attempts, change the parent and mutate again
+        parent_config = self.initialize_parent()
+        
+        return self.mutate_parent(parent_config, max_attempts)
+            
     def restart(self):
         """
         Restarts the evolutionary strategy by initializing a new parent configuration.
@@ -350,11 +454,73 @@ class EvolutionaryStrategy(object):
         
         # Mutate parent until it is valid
         if(not is_valid):
-            parent_config = self.mutate(parent_config, config.MAX_ATTEMPTS_GENERATION)
+            parent_config = self.mutate_parent(parent_config, config.MAX_ATTEMPTS_GENERATION)
         else:
             self.history_mutant.add(tuple(parent_config)) # Add to history
         
         return parent_config
+    
+    def save_results(self):
+        
+        # Data to save in JSON
+        data = {
+            "Global Variables": {
+                "NUM_SPIRAL_POINTS": config.NUM_SPIRAL_POINTS,
+                "SPIRAL_GOLDEN_ANGLE": config.SPIRAL_GOLDEN_ANGLE,
+                "SPIRAL_RADIUS_INCREMENT": config.SPIRAL_RADIUS_INCREMENT,
+                "GENERATION_AREA_MIN_POS": [config.GENERATION_AREA_MIN_POS[0], config.GENERATION_AREA_MIN_POS[1]],
+                "GENERATION_AREA_MAX_POS": [config.GENERATION_AREA_MAX_POS[0], config.GENERATION_AREA_MAX_POS[1]],
+                "THRESHOLD_DISTANCE": config.THRESHOLD_DISTANCE,
+                "ROUND_PARAMETER": config.ROUND_PARAMETER,
+                "X_RANGE": config.X_RANGE,
+                "Y_RANGE": config.Y_RANGE,
+                "OBST_LENGTH": config.OBST_LENGTH,
+                "OBST_WIDTH": config.OBST_WIDTH,
+                "OBSTACLE_HEIGHT": config.OBSTACLE_HEIGHT,
+                "OBST_Z": config.OBST_Z,
+                "ANGLE_STEP": config.ANGLE_STEP,
+                "MAX_ATTEMPTS_GENERATION": config.MAX_ATTEMPTS_GENERATION,
+                "MAX_ATTEMPTS_PERFORMANCE": config.MAX_ATTEMPTS_PERFORMANCE,
+                "MINIMUM_DISTANCE_EXECUTION": config.MINIMUM_DISTANCE_EXECUTION,
+                "LOCAL_MINIMUM": config.LOCAL_MINIMUM,
+                "DIR_GENERATED_PLOTS": config.DIR_GENERATED_PLOTS,
+                "DIR_GENERATED_TESTS": config.DIR_GENERATED_TESTS,
+                "TESTING": config.TESTING,
+                "NUM_OBSTS": config.NUM_OBSTS
+                },
+                "Score": {
+                    "SCORE": self.total_score,
+                }
+            }
+        
+        try:
+            with open(f"{self.tests_fld}setup.json", 'w') as json_file:
+                json.dump(data, json_file, indent=4)
+            print(f"Result file saved successfully.")
+            
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            
+    def calculate_score(self, min_dist):
+        """
+        Calculates the score based on the minimum distance.
+
+        Args:
+            min_dist (float): The minimum distance in meters.
+
+        Returns:
+            int: The calculated score.
+        """
+        
+        # Calculate score based on the minimum distance
+        if min_dist < 0.25:
+            return 5
+        elif 0.25 <= min_dist < 1.0:
+            return 2
+        elif 1.0 <= min_dist < 1.5:
+            return 1
+        else:
+            return 0
     
 def timeout_handler(signum, frame):
     """
@@ -373,3 +539,4 @@ if __name__ == "__main__":
     # Testing
     generator = EvolutionaryStrategy("case_studies/mission3.yaml")
     generator.generate(200) # Budget
+    generator.save_results()
