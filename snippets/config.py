@@ -15,8 +15,8 @@ THRESHOLD_DISTANCE = 3 #meters
 ROUND_PARAMETER = 1
 
 #Obstacles
-OBST_LENGTH = 1 #meters
-OBST_WIDTH = 1 #meters 
+OBST_LENGTH = 10 #meters
+OBST_WIDTH = 20 #meters 
 OBSTACLE_HEIGHT = 25 #meters
 OBST_Z = 0
 ANGLE_STEP = 10
