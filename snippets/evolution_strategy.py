@@ -1,11 +1,11 @@
 import random
 from typing import List
-from math import cos, sin, pi
+from math import sin, pi
 import yaml
 import numpy as np
 import config
-from aerialist.px4.drone_test import DroneTest
-from aerialist.px4.obstacle import Obstacle
+from aerialist.px4.drone_test import DroneTest  # type: ignore
+from aerialist.px4.obstacle import Obstacle # type: ignore
 from testcase import TestCase
 from mission_plan import DroneMissionPlan
 import signal
@@ -16,16 +16,19 @@ from json import *
 from obstacle_generator import ObstacleGenerator
 import json
 
-class DataEncoder(JSONEncoder):
-    def default(self, o):
-        return o.__dict__
-    
-def timeout_handler(signum, frame):
-        raise Exception("Timeout")
-
 class EvolutionaryStrategy(object):
 
-    def __init__(self, case_study_file: str) -> None:
+    def __init__(self, case_study_file):
+        """
+        Initializes the Evolutionary Strategy class, including reading the mission plan 
+        and preparing the environment for testing.
+
+        Parameters:
+        case_study_file (str): Path to the YAML file containing the case study configuration.
+        
+        Return:
+        None
+        """
         
         print("------------------------------------")
         print("Evolutionary Strategy Setup")
@@ -48,47 +51,51 @@ class EvolutionaryStrategy(object):
         os.makedirs(self.tests_fld, exist_ok=True)
         print(f"Output folder: {self.tests_fld}")
 
-        #Counter for the tests
+        # Initialize variables
         self.test_counter = 1
         self.budget = 0
         self.history_mutant = set()
         self.candidate_points = self.obstacle_generator.filtered_spiral.copy()
+        self.candidate_pairs_used = set()
         self.threshold = config.THRESHOLD_DISTANCE
-        self.candidate_points_used = set()
         
+    def generate(self, budget): 
+        """
+        Executes an evolutionary strategy to optimize obstacle configurations within a given budget.
 
-    def generate(self, budget: int) -> List[TestCase]: 
+        Parameters:
+        budget (int): The total number of test iterations allowed for the optimization process.
+
+        Returns:
+        None
+        """
+        
         print("------------------------------------")
         print("Generation")
         print("------------------------------------")
 
-        # Total budget
+        # Total budget of tests
         self.budget = budget
 
-        # Initialize parent
-        parent_config = self.initialize_parent()
+        # Initialize parent configuration
+        parent_config = self.restart()
         parent_obsts = self.obstacle_generator.get_obstacles_from_parameters(parent_config)
-        is_valid = self.obstacle_generator.is_valid(parent_obsts)
-        
-        # Mutate parent until it is valid
-        if(not is_valid):
-            parent_config = self.mutate(parent_config, config.MAX_ATTEMPTS_GENERATION)
-            if(parent_config==None):
-                raise ValueError("No valid configuration found")
-            parent_obsts = self.obstacle_generator.get_obstacles_from_parameters(parent_config)
-        else:
-            self.history_mutant.add(tuple(parent_config)) # Add to history
-
         print(f"Parent config: {parent_config}")
 
         # Execute
         parent_fitness = self.execution(parent_obsts)
         print(f"Parent fitness: {parent_fitness}")
         
-        performance_attemps = 0
+        # Counter to check local minimum    
+        performance_attemps = 0 
+
+        # Main loop
         while(self.test_counter <= self.budget):
             
+            # Check precence of local minimum
             if(performance_attemps < config.MAX_ATTEMPTS_PERFORMANCE):
+                
+                # Mutate
                 child_config = self.mutate(parent_config, config.MAX_ATTEMPTS_GENERATION)
                 child_obsts = self.obstacle_generator.get_obstacles_from_parameters(child_config)
                 child_fitness = self.execution(child_obsts)
@@ -101,26 +108,31 @@ class EvolutionaryStrategy(object):
                 else:
                     performance_attemps += 1
                 
-                # Output 
+                # Print generation results
                 print(f"Generation {self.test_counter-1}: Best fitness = {parent_fitness:.4f}")
             
-            else: # Local minimum
-                print(f"Local minimum reached")
-                parent_config = self.initialize_parent()
-                parent_obsts = self.obstacle_generator.get_obstacles_from_parameters(parent_config)
-                is_valid = self.obstacle_generator.is_valid(parent_obsts)
+            else: # Local minimum reached
+                
+                # Restart
+                parent_config = self.restart()
                 performance_attemps = 0
-
-                # Mutate parent until it is valid
-                if(not is_valid):
-                    parent_config = self.mutate(parent_config, config.MAX_ATTEMPTS_GENERATION)
-                else:
-                    self.history_mutant.add(tuple(parent_config)) # Add to history
 
         print("------------------------------------")
         print(f"Budget ended - Best fitness = {parent_fitness:.4f}")
 
     def execution(self, obstacles):
+        """
+        Executes a test case with the given obstacle configuration and manages the test results.
+
+        Parameters:
+        obstacles (list): A list of dictionaries representing obstacles, where each dictionary contains:
+            - 'x', 'y', 'z': Position coordinates.
+            - 'rotation': Rotation angle.
+            - 'length', 'width', 'height': Size dimensions.
+
+        Returns:
+        float: The minimum distance recorded during the test execution, if the test is valid.
+        """
         
         print("------------------------------------")
         print(f"Execution {self.test_counter}/{self.budget}")
@@ -128,6 +140,7 @@ class EvolutionaryStrategy(object):
 
         list_obstacles = []
 
+        # Create obstacles from the input
         for obst in obstacles:
             
             position = Obstacle.Position(
@@ -143,29 +156,38 @@ class EvolutionaryStrategy(object):
                 h=obst['height'],
             )
             
-            # Create an obstacle with size and position
             obstacle = Obstacle(size, position)
             list_obstacles.append(obstacle)
 
+        # Execute the test case
         test = TestCase(self.case_study, list_obstacles)
         try:
             
             if(config.TESTING == True):
                 distances = [self.simulate_execute()]
             else:
+                # Set timeout for test execution
                 signal.signal(signal.SIGALRM, timeout_handler)
                 timeout_duration = 60 * 10
                 signal.alarm(timeout_duration)
                 print("Running ros. . .")
+                
+                # Execute the test
                 test.execute()
+                
+                # Plot the test results
                 test.plot()
+                
+                # Get the distances
                 distances = test.get_distances()
-
 
             print(f"Minimum distance:{min(distances)}")
         except Exception as e:
             print("Exception during test execution, skipping the test")
             print(e)
+        
+        if(distances == []):
+            distances = [9999]
         
         # Save the results
         if(min(distances) < config.MINIMUM_DISTANCE_EXECUTION):
@@ -179,18 +201,18 @@ class EvolutionaryStrategy(object):
             parameters = self.obstacle_generator.getParameters()
             parameters["obstacles"] = f"{obstacles}"
             parameters["minimum_distance"] = f"{min(distances)}"
+            
             # Save the parameters to json
             parameters_file = f"{self.tests_fld}parameters_{self.test_counter}.json"
             with open(parameters_file, "w") as json_file:
                 json.dump(parameters, json_file, indent=4, ensure_ascii=False)
             
-            print(f"Test saved to {parameters_file}")
-            self.test_counter += 1
-            return min(distances)
-        else:
-            self.test_counter += 1
+            print(f"Test saved to {self.tests_fld}")
         
-
+        # Update the test counter
+        self.test_counter += 1
+        return min(distances)       
+                
     def mutate(self, parameters, max_attempts):
 
         mutated_parameters = parameters.copy()
@@ -238,50 +260,114 @@ class EvolutionaryStrategy(object):
         return self.mutate(parent_config, max_attempts)
 
     def simulate_execute(self):
-        distance = round(random.uniform(0.10, 40), 3)        
+        """
+        Simulates the execution of a test by generating a random distance value.
+
+        Returns:
+        float: A randomly generated distance value, rounded to 3 decimal places.
+        """
+        
+        # Generate a random distance value
+        distance = round(random.uniform(0.10, config.MINIMUM_DISTANCE_EXECUTION + 10), 3)        
         print(f"Simulating execution (random)")
+        
         return distance        
     
     def initialize_parent(self):
+        """
+        Initializes a new parent configuration by selecting a pair of candidate points
+        and generating their parameters (positions and angles).
 
-        # Check if there are any candidate points left
+        Returns:
+        list: A list of parent parameters, including positions (x, y) and rotations (r) for two points.
+        """
+        
         cand_len = len(self.candidate_points)
 
-        if cand_len == 0:
+        if cand_len < 2:
             self.candidate_points = self.obstacle_generator.recalculate_filter_spiral(self.threshold + 1)
-            cand_len = len(self.candidate_points)
+            self.threshold += 1 # Increase threshold
+            return self.initialize_parent()
         
         # Shuffle the candidate points
         random.shuffle(self.candidate_points)
         
-        selected_point = None
+        selected_pair = None
 
-        # Iterate through the candidate points to find an unused one
-        for point in self.candidate_points:
-            if tuple(point) not in self.candidate_points_used:
-                selected_point = point
+        # Iterate through candidate points to find an unused pair
+        for i, point1 in enumerate(self.candidate_points):
+            for j, point2 in enumerate(self.candidate_points):
+                
+                 # Ensure the two points are distinct
+                if i != j:  
+                    
+                    # Check if the pair is already used
+                    pair = (tuple(point1), tuple(point2))
+                    if pair not in self.candidate_pairs_used and tuple(reversed(pair)) not in self.candidate_pairs_used:
+                        selected_pair = pair
+                        
+                        break
+            if selected_pair:
                 break
 
-        # If no unused point is found, recalculate and restart
-        if selected_point is None:
+        # If no unused pair is found, recalculate and restart
+        if selected_pair is None:
             self.candidate_points = self.obstacle_generator.recalculate_filter_spiral(self.threshold + 1)
-            return self.initialize_parent() 
+            self.threshold += 1 # Increase threshold
+            return self.initialize_parent()
 
-        # Create parent parameters using the selected point
+        # Create parent parameters
         parent_parameters = [
-            selected_point[0], 
-            selected_point[1],  
-            np.random.choice(np.arange(0, 91, config.ANGLE_STEP)),  # Random rotation between 0 and 90 degrees (N degree steps)
-            selected_point[0],  
-            selected_point[1],  
-            np.random.choice(np.arange(0, 91, config.ANGLE_STEP))  # Random rotation between 0 and 90 degrees (N degree steps)
+            selected_pair[0][0], # x1
+            selected_pair[0][1], # y1 
+            np.random.choice(np.arange(0, 91, config.ANGLE_STEP)),  # r1
+            selected_pair[1][0], # x2
+            selected_pair[1][1], # y2
+            np.random.choice(np.arange(0, 91, config.ANGLE_STEP))  # r2
         ]
 
-        # Mark the point as used
-        self.candidate_points_used.add(tuple(selected_point))
-
-        print(f"Initialization Parent: {parent_parameters}")
+        # Add the selected pair to the used pairs
+        self.candidate_pairs_used.add(selected_pair)
         return parent_parameters
+
+    def mutate_child(self, parameters, max_attempts):
+        return None
+    
+    def mutate_parent(self, parameters, max_attempts):
+        return None
+    
+    def restart(self):
+        """
+        Restarts the evolutionary strategy by initializing a new parent configuration.
+
+        Returns:
+        parameters: new valid parent configuration
+        """
+        
+        parent_config = self.initialize_parent()
+        parent_obsts = self.obstacle_generator.get_obstacles_from_parameters(parent_config)
+        is_valid = self.obstacle_generator.is_valid(parent_obsts)
+        
+        # Mutate parent until it is valid
+        if(not is_valid):
+            parent_config = self.mutate(parent_config, config.MAX_ATTEMPTS_GENERATION)
+        else:
+            self.history_mutant.add(tuple(parent_config)) # Add to history
+        
+        return parent_config
+    
+def timeout_handler(signum, frame):
+    """
+    Utility function: handles timeout signals by raising an exception.
+
+    Parameters:
+    signum (int): The signal number.
+    frame (frame): The current stack frame.
+
+    Raises:
+    Exception: An exception to indicate a timeout occurred.
+    """
+    raise Exception("Timeout")
 
 if __name__ == "__main__":
     # Testing
